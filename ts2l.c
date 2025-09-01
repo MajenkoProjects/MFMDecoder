@@ -71,33 +71,6 @@ const unsigned char crchi[] = {
 #define POLY 0xa00805
 
 
-/*
-    def update_crc32(self, byte):
-        self.crc32_accum ^= byte
-        for i in range(8):
-            odd = self.crc32_accum % 1
-            self.crc32_accum >>= 1
-            if odd:
-                self.crc32_accum ^= 0x140a0445
-*/
-
-void crc32c(uint32_t *crc, const unsigned char val)
-{
-	uint32_t accum = *crc;
-	accum ^= val;
-	for (int i = 0; i < 8; i++) {
-		int odd = accum & 1;
-		accum >>= 1;
-		if (odd) {
-			accum ^= POLY;
-		}
-	}
-
-//	printf("CRC: %02x %08x -> %08x\n", val, *crc, accum);
-
-	*crc = accum;
-}
-
 int crc32(int byte, int crc)
 {
 
@@ -390,48 +363,35 @@ int main(int argc, char **argv) {
 
 								printf("Sector %d\n", sector);
 
-								memcpy(trackdata + (sector * 512), sectordata, 512);
 
 								ascii[0] = 0;
 
 								int count = 0;
 
 								uint32_t crc = 0xFFFFFFFF;
-								//uint32_t crc = 0;
-								//uint32_t crc = 0xd4d7ca20;
-								//uint32_t crc = 0x104c981;
 								crc = crc32(0xa1, crc);
 								crc = crc32(blockbyte, crc);
 
 								for (int i = 0; i < sectorsize; i++) {
-									printf("%02x ", sectordata[i]);
-									
-									ascii[count++] = (sectordata[i] >= 32 && sectordata[i] <= 127) ? sectordata[i] : '.';
-									ascii[count] = 0;
-
-									if (count == 16) {
-										printf("  %s\n", ascii);
-										count = 0;
-										ascii[0] = 0;
-									}
-
-//									upd_crc(sectordata[i], &cl, &ch);
 									crc = crc32(sectordata[i], crc);
 								}
 
-//								crc32c(&crc, sectordata[512]);
-//								crc32c(&crc, sectordata[513]);
-//								crc32c(&crc, sectordata[514]);
-//								crc32c(&crc, sectordata[515]);
+								uint32_t testcrc = (sectordata[sectorsize] << 24) | 
+												   (sectordata[sectorsize + 1] << 16) | 
+												   (sectordata[sectorsize + 2] << 8) | 
+												   (sectordata[sectorsize + 3]);
 
-								printf("%02x%02x%02x%02x\n", sectordata[512], sectordata[513], sectordata[514], sectordata[515]);
-								printf("\n");
-								printf("CRC: %08x\n", crc);
-								//if (sectordata[sectorsize] == ch && sectordata[sectorsize+1] == cl) {
-							//		printf("Checksum good!\n");
-						//		} else {
-					//				printf("Checksum bad!\n");
-				//				}
+								printf("CRC: %08x == %08x\n", testcrc, crc);
+								if (crc == testcrc) {
+									printf("Checksum good!\n");
+									memcpy(trackdata + (sector * sectorsize), sectordata, sectorsize);
+
+
+								} else {
+									printf("Checksum bad!\n");
+								}
+
+
 								blocktype = IDLE;
 							}
 						}

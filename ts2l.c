@@ -47,7 +47,7 @@ const unsigned char crchi[] = {
 	0x6C,0x7C,0x4C,0x5C,0x2C,0x3C,0x0C,0x1C,0xED,0xFD,0xCD,0xDD,0xAD,0xBD,0x8D,0x9D,
 	0x7E,0x6E,0x5E,0x4E,0x3E,0x2E,0x1E,0x0E,0xFF,0xEF,0xDF,0xCF,0xBF,0xAF,0x9F,0x8F,
 	0x91,0x81,0xB1,0xA1,0xD1,0xC1,0xF1,0xE1,0x10,0x00,0x30,0x20,0x50,0x40,0x70,0x60,
-	0x83,0x93,0xA3,0xB3,0xC3,0xD3,0xE3,0xF3,0x02,0x12,0x22,0x32,0x42,0x52,0x62,0x72,
+	0x82,0x93,0xA3,0xB3,0xC3,0xD3,0xE3,0xF3,0x02,0x12,0x22,0x32,0x42,0x52,0x62,0x72,
 	0xB5,0xA5,0x95,0x85,0xF5,0xE5,0xD5,0xC5,0x34,0x24,0x14,0x04,0x74,0x64,0x54,0x44,
 	0xA7,0xB7,0x87,0x97,0xE7,0xF7,0xC7,0xD7,0x26,0x36,0x06,0x16,0x66,0x76,0x46,0x56,
 	0xD9,0xC9,0xF9,0xE9,0x99,0x89,0xB9,0xA9,0x58,0x48,0x78,0x68,0x18,0x08,0x38,0x28,
@@ -65,20 +65,27 @@ const unsigned char crchi[] = {
  */
 
 
-#define POLY 0x140a0445
+//#define POLY 0x140a0445
+//#define POLY 0x104c981
+//#define POLY 0xd4d7ca20
+#define POLY 0xa00805
 
-uint32_t crc32c(uint32_t crc, const unsigned char *buf, size_t len)
+
+int crc32(int byte, int crc)
 {
-    int k;
 
-    crc = ~crc;
-    while (len--) {
-        crc ^= *buf++;
-        for (k = 0; k < 8; k++)
-            crc = crc & 1 ? (crc >> 1) ^ POLY : crc >> 1;
-    }
-    return ~crc;
+   int j;
+   crc = crc ^ (byte << 24);
+   for (j = 1; j <= 8; j++) {   // Assuming 8 bits per byte
+      if (crc & 0x80000000) {   // if leftmost (most significant) bit is set
+         crc = (crc << 1) ^ POLY;
+      } else {
+         crc = crc << 1;
+      }
+   }
+   return crc;
 }
+
 
 void upd_crc(unsigned char val, unsigned char *low, unsigned char *high) {
 	unsigned char zl = val;
@@ -98,9 +105,19 @@ int shift2(char *data) {
 	int res = 0;
 	
 	if (data[0] == '0' && data[1] == '1') res = 1;
-	printf("%c%c = %d\n", data[0], data[1], res);
+	//printf("%c%c = %d\n", data[0], data[1], res);
 	for (int i = 2; i < strlen(data) + 1; i++) {
 		data[i - 2] = data[i];
+	}
+
+	return res;
+}
+
+int shift1(char *data) {
+	int res = 0;
+	
+	for (int i = 1; i < strlen(data) + 1; i++) {
+		data[i - 1] = data[i];
 	}
 
 	return res;
@@ -212,44 +229,48 @@ int main(int argc, char **argv) {
 
 		double cv = clock / 2.0;
 
-		double shortl = cv * 1.8;
-		double shorth = cv * 2.2;
+		double shortl = 0.000000150; //cv * 1.8;
+		double shorth = 0.000000250; //cv * 2.2;
 
-		double medl = cv * 2.8;
-		double medh = cv * 3.2;
+		double medl = 0.000000250; //cv * 2.8;
+		double medh = 0.000000350; //cv * 3.2;
 
-		double highl = cv * 3.8;
-		double highh = cv * 4.2;
+		double highl = 0.000000350; //cv * 3.8;
+		double highh = 0.000000450; //cv * 4.2;
 
 
 		if (d > shortl && d < shorth) {
 			strcat(data, "01");
-			printf("%.9f 01\n", d);
+//			printf("%.9f 01\n", d);
 		} else if (d > medl && d < medh) {
 			strcat(data, "001");
-			printf("%.9f 001\n", d);
+//			printf("%.9f 001\n", d);
 		} else if (d > highl && d < highh) {
 			strcat(data, "0001");
-			printf("%.9f 0001\n", d);
+//			printf("%.9f 0001\n", d);
 		}
 
 
 
 		while (strlen(data) >= 16) { // A whole byte's worth
 
-//			printf("{%s}\n", data);
+//			printf("%.9f {%s}\n", f, data);
 
-			if (strncmp(data, "0100010010001001", 16) == 0) { // Sync word found
-				printf("SYNC found: %s %02x\n", data, decode_byte(data));
-//					shift16(data);
-				blocktype = UNDETERMINED; // Undetermined
-				byte = 0;
-				bit = 0;
-				sectorpos = 0;
+			if (blocktype == IDLE) {
+				if (strncmp(data, "0100010010001001", 16) == 0) { // Sync word found
+					printf("SYNC found: %s %02x\n", data, decode_byte(data));
+	//					shift16(data);
+					blocktype = UNDETERMINED; // Undetermined
+					byte = 0;
+					bit = 0;
+					sectorpos = 0;
 
-				double st = f - lastsync;
-				lastsync = f;
-				printf("Time since last sync: %.9f (%.9f)\n", st, f);
+					double st = f - lastsync;
+					lastsync = f;
+					printf("Time since last sync: %.9f (%.9f)\n", st, f);
+				} else {
+					shift1(data);
+				}
 			} else {
 				int bval = shift2(data);
 				byte <<= 1;
@@ -257,7 +278,7 @@ int main(int argc, char **argv) {
 				bit++;
 
 				if (bit == 8) {
-					printf("    -> %02x [%c]\n", byte, (byte >= 32 && byte <= 127) ? byte : '.');
+//					printf("    -> %02x [%c]\n", byte, (byte >= 32 && byte <= 127) ? byte : '.');
 					if (blocktype == UNDETERMINED) {
 						blockbyte = byte;
 						switch (byte) {
@@ -342,43 +363,35 @@ int main(int argc, char **argv) {
 
 								printf("Sector %d\n", sector);
 
-								memcpy(trackdata + (sector * 512), sectordata, 512);
 
 								ascii[0] = 0;
 
 								int count = 0;
 
+								uint32_t crc = 0xFFFFFFFF;
+								crc = crc32(0xa1, crc);
+								crc = crc32(blockbyte, crc);
+
 								for (int i = 0; i < sectorsize; i++) {
-									printf("%02x ", sectordata[i]);
-									
-									ascii[count++] = (sectordata[i] >= 32 && sectordata[i] <= 127) ? sectordata[i] : '.';
-									ascii[count] = 0;
+									crc = crc32(sectordata[i], crc);
+								}
 
-									if (count == 16) {
-										printf("  %s\n", ascii);
-										count = 0;
-										ascii[0] = 0;
-									}
+								uint32_t testcrc = (sectordata[sectorsize] << 24) | 
+												   (sectordata[sectorsize + 1] << 16) | 
+												   (sectordata[sectorsize + 2] << 8) | 
+												   (sectordata[sectorsize + 3]);
 
-//									upd_crc(sectordata[i], &cl, &ch);
+								printf("CRC: %08x == %08x\n", testcrc, crc);
+								if (crc == testcrc) {
+									printf("Checksum good!\n");
+									memcpy(trackdata + (sector * sectorsize), sectordata, sectorsize);
+
+
+								} else {
+									printf("Checksum bad!\n");
 								}
 
 
-								uint32_t crc = 0;
-								uint8_t tdata[2];
-								tdata[0] = 0xa1;
-								tdata[1] = blockbyte;
-								crc = crc32c(crc, tdata, 2);
-								crc = crc32c(crc, sectordata, sectorsize);
-
-								printf("%02x%02x%02x%02x\n", sectordata[512], sectordata[513], sectordata[514], sectordata[515]);
-								printf("\n");
-								printf("CRC: %08x\n", crc);
-								//if (sectordata[sectorsize] == ch && sectordata[sectorsize+1] == cl) {
-							//		printf("Checksum good!\n");
-						//		} else {
-					//				printf("Checksum bad!\n");
-				//				}
 								blocktype = IDLE;
 							}
 						}
